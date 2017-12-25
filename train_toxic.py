@@ -15,26 +15,28 @@ import logging
 import random
 from pathlib import Path
 
-import en_core_web_sm
+#import en_core_web_sm
+import en_core_web_lg
 import spacy
 from spacy.util import minibatch, compounding
 
 logger = logging.getLogger(__name__)
 labels = ['toxic', 'severe_toxic', 'obscene', 'threat', 'insult', 'identity_hate']
 
-def main(model, training_path, output_path, iterations, split):
+def main(model_path, training_path, output_path, iterations, split):
     print(
         "Initialising spacy categorizer, training path: {}, output path: {}, iterations: {}".format(training_path,
                                                                                                     output_path,
                                                                                                     str(iterations)))
-    if model is not None:
-        nlp = spacy.load(model)  # load existing spaCy model
-        print("Loaded model '%s'" % model)
+    if model_path is not None:
+        nlp = spacy.load(model_path)  # load existing spaCy model
+        print("Loaded model '%s'" % model_path)
     else:
         nlp = spacy.blank('en')  # create blank Language class
+        #nlp = en_core_web_lg.load()
         print("Created blank 'en' model")
 
-    #nlp = en_core_web_sm.load()
+    
 
     textcat = get_textcat_pipe(nlp)
     map(lambda x: textcat.add_label(x), labels)
@@ -146,9 +148,10 @@ def load_data(training_path, split):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('-t', '--training_path')
-    parser.add_argument('-o', '--output_path')
-    parser.add_argument('-i', '--iterations')
+    parser.add_argument('-m', '--model_dir', dest="model_dir", default=None)
+    parser.add_argument('-t', '--training_path', type= file, default="./train.csv")
+    parser.add_argument('-o', '--output_path', dest="output_path", default="./output")
+    parser.add_argument('-i', '--iterations', type=int, default=20)
     parser.add_argument('-s', '--split', default=0.7)
     args = parser.parse_args()
-    main(model = "./output", training_path="./train.csv", output_path="./output", iterations=20, split=0.10)
+    main(args.model_dir, args.training_path, args.output_path, args.iterations, args.split)
