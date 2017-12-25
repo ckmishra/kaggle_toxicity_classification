@@ -27,7 +27,6 @@ def main(model_dir, test_path, submission_path, limit):
         wr.writerow(["id" ]+labels) # header
         for id, text in load_test_data(test_path, limit):
             output = [id]
-            #str(id) != str("6044863") and
             if  str(id) != str("206058417140"):
                 doc = nlp(text)
             else:
@@ -38,23 +37,7 @@ def main(model_dir, test_path, submission_path, limit):
                 output.append(doc.cats[label.decode('utf-8')])
             wr.writerow(output)
 
-        '''
-        for key in raw_data.keys():
-            if key is 'id':
-                raw_data['id'].append(id)
-            else:
-                raw_data[key].append(doc.cats[key.decode('utf-8')])
 
-    # write to csv
-    df = pd.DataFrame(raw_data, columns = labels.insert(0, 'id'))
-    
-    if os.path.exists(submission_path):
-        os.remove(submission_path)
-    else:
-        submission_path = open(submission_path, "w")
-
-    df.to_csv(submission_path, index=False)
-    '''
 def load_test_data(test_data_path, limit):
     test = pd.read_csv(test_data_path, header = 0)
     test_data = zip(test['id'], [str(item).decode('utf-8') for item in test['comment_text']])

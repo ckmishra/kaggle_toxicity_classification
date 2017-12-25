@@ -10,20 +10,19 @@ import pandas as pd # data processing, CSV file I/O (e.g. pd.read_csv)
 #print(check_output(["ls", "../input"]).decode("utf8"))
 
 
-import argparse
-import logging
+import sys, argparse
 import random
 from pathlib import Path
+import datetime
 
 #import en_core_web_sm
 import en_core_web_lg
 import spacy
 from spacy.util import minibatch, compounding
 
-logger = logging.getLogger(__name__)
 labels = ['toxic', 'severe_toxic', 'obscene', 'threat', 'insult', 'identity_hate']
 
-def main(model_path, training_path, output_path, iterations, split):
+def main(model_path, training_path, limit, output_path, iterations, split ):
     print(
         "Initialising spacy categorizer, training path: {}, output path: {}, iterations: {}".format(training_path,
                                                                                                     output_path,
@@ -32,8 +31,8 @@ def main(model_path, training_path, output_path, iterations, split):
         nlp = spacy.load(model_path)  # load existing spaCy model
         print("Loaded model '%s'" % model_path)
     else:
-        nlp = spacy.blank('en')  # create blank Language class
-        #nlp = en_core_web_lg.load()
+        #nlp = spacy.blank('en')  # create blank Language class
+        nlp = en_core_web_lg.load()
         print("Created blank 'en' model")
 
     
@@ -41,7 +40,7 @@ def main(model_path, training_path, output_path, iterations, split):
     textcat = get_textcat_pipe(nlp)
     map(lambda x: textcat.add_label(x), labels)
 
-    (train_texts,train_cats), (dev_texts, dev_cats) = load_data(training_path, split)
+    (train_texts,train_cats), (dev_texts, dev_cats) = load_data(training_path, limit, split)
     print("Using ({} training, {} evaluation)"
           .format(len(train_texts), len(dev_texts)))
 
@@ -54,14 +53,19 @@ def main(model_path, training_path, output_path, iterations, split):
         optimizer = nlp.begin_training()
         print("Training the model...")
         print('{:^5}\t{:^5}\t{:^5}\t{:^5}'.format('LOSS', 'P', 'R', 'F'))
-        for i in range(iterations):
+        prev_losses = {}
+        losses = {'textcat': sys.maxint}
+        learning_rate = 0.2
+        for iter in range(iterations):
+            start = datetime.datetime.now()
+            prev_losses = losses
             losses = {}
             # batch up the examples using spaCy's minibatch
             batches = minibatch(train_data, size=compounding(4., 32., 1.001))
             for batch in batches:
                 texts, annotations = zip(*batch)
                 #print texts, annotations
-                nlp.update(texts, annotations, sgd=optimizer, drop=0.2,
+                nlp.update(texts, annotations, sgd=optimizer, drop=learning_rate,
                            losses=losses)
             with textcat.model.use_params(optimizer.averages):
                 # evaluate on the dev data split off in load_data()
@@ -70,6 +74,16 @@ def main(model_path, training_path, output_path, iterations, split):
                   .format(losses['textcat'], scores['textcat_p'],
                           scores['textcat_r'], scores['textcat_f']))
 
+            end = datetime.datetime.now()
+            print ("Time (in seconds) taken in {} iteration with learning_rate ({}) : {}".format(iter+1, learning_rate, int((end -start).total_seconds())))
+
+            # prev loss less than current than break
+            if prev_losses['textcat'] < losses['textcat']:
+                break
+            elif abs(prev_losses['textcat'] - losses['textcat']) < 10:
+                learning_rate = learning_rate/2 # if log loss is less than reduce learning rate
+
+            
     # test the trained model
     test_text = "wanna fuck you"
     doc = nlp(test_text)
@@ -123,8 +137,8 @@ def get_textcat_pipe(nlp):
         textcat = nlp.get_pipe('textcat')
     return textcat
 
-def load_data(training_path, split):
-    train = pd.read_csv(training_path, header = 0)
+def load_data(training_path, limit, split):
+    train = pd.read_csv(training_path, header = 0, nrows =limit)
 
     X, y = [item.decode('utf-8') for item in train['comment_text']], train[labels]
    
@@ -152,6 +166,7 @@ if __name__ == '__main__':
     parser.add_argument('-t', '--training_path', type= file, default="./train.csv")
     parser.add_argument('-o', '--output_path', dest="output_path", default="./output")
     parser.add_argument('-i', '--iterations', type=int, default=20)
-    parser.add_argument('-s', '--split', default=0.7)
+    parser.add_argument('-s', '--split', default=0.1)
+    parser.add_argument('-l', '--limit', type=int, dest="limit", default= sys.maxint)
     args = parser.parse_args()
-    main(args.model_dir, args.training_path, args.output_path, args.iterations, args.split)
+    main(args.model_dir, args.training_path, args.limit, args.output_path, args.iterations, args.split)
